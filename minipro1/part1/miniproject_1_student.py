@@ -25,6 +25,9 @@ from sentence_transformers import SentenceTransformer
 import matplotlib.pyplot as plt
 import math
 from openai import OpenAI  # Added for OpenAI embeddings
+import time
+import json
+import pandas as pd
 
 
 ### Some predefined utility functions for you to load the text embeddings
@@ -348,7 +351,7 @@ def averaged_glove_embeddings_gdrive(sentence, word_index_dict, embeddings, mode
 
 
 # Task III: Sort the cosine similarity
-def get_sorted_cosine_similarity(embeddings_metadata):
+def get_sorted_cosine_similarity(embeddings_metadata, input_text=None):
     """
     Get sorted cosine similarity between input sentence and categories
     
@@ -388,6 +391,9 @@ def get_sorted_cosine_similarity(embeddings_metadata):
         - get_category_embeddings(embeddings_metadata)
         - cosine_similarity(x, y)
     """
+    if input_text is None:
+        input_text = st.session_state.text_search
+    
     categories = st.session_state.categories.split(" ")
     cosine_sim = {}
     input_sentence = st.session_state.text_search
@@ -430,19 +436,24 @@ def get_sorted_cosine_similarity(embeddings_metadata):
         ##########################################
         ## TODO: Implement OpenAI similarity calculation (15 pts)
         ##########################################
+        # if cache_key not in st.session_state:
+        #     # Make sure embeddings_metadata has the correct structure for get_category_embeddings
+        #     category_metadata = {
+        #         "embedding_model": "openai",
+        #         "model_name": model_name
+        #     }
+        #     get_category_embeddings(category_metadata)
         if cache_key not in st.session_state:
-            # Make sure embeddings_metadata has the correct structure for get_category_embeddings
-            category_metadata = {
-                "embedding_model": "openai",
-                "model_name": model_name
-            }
-            get_category_embeddings(category_metadata)
+            st.session_state[cache_key] = {}
 
         # get input embedding
         input_embedding = get_openai_embeddings(input_sentence, model_name)
 
         # calculate cosine
         for idx, category in enumerate(categories):
+            if category not in st.session_state[cache_key]:  # ← ADD THIS CHECK
+                st.session_state[cache_key][category] = get_openai_embeddings(
+                category, model_name=model_name)
             category_embedding = st.session_state[cache_key][category]
             similarity = cosine_similarity(input_embedding, category_embedding)
             cosine_sim[idx] = similarity
@@ -456,14 +467,16 @@ def get_sorted_cosine_similarity(embeddings_metadata):
         ##########################################
         ## TODO: Implement Sentence Transformer similarity calculation (15 pts)
         ##########################################
+        # if cache_key not in st.session_state:
+        #     # Make sure embeddings_metadata has the correct structure for get_category_embeddings
+        #     category_metadata = {
+        #         "embedding_model": "transformers",
+        #         "model_name": model_name
+        #     }
+        #     get_category_embeddings(category_metadata)
         if cache_key not in st.session_state:
-            # Make sure embeddings_metadata has the correct structure for get_category_embeddings
-            category_metadata = {
-                "embedding_model": "transformers",
-                "model_name": model_name
-            }
-            get_category_embeddings(category_metadata)
-
+            st.session_state[cache_key] = {}
+        
         # input embedding
         input_embedding = get_sentence_transformer_embeddings(
             input_sentence, model_name
@@ -471,6 +484,10 @@ def get_sorted_cosine_similarity(embeddings_metadata):
 
         # calculate cosine
         for idx, category in enumerate(categories):
+            if category not in st.session_state[cache_key]:  # ← ADD THIS CHECK
+                st.session_state[cache_key][category] = get_sentence_transformer_embeddings(
+                category, model_name=model_name
+            )
             category_embedding = st.session_state[cache_key][category]
             similarity = cosine_similarity(input_embedding, category_embedding)
             cosine_sim[idx] = similarity
@@ -504,6 +521,39 @@ if __name__ == "__main__":
 
     model_type = st.sidebar.selectbox("Choose the model", ("25d", "50d", "100d"), index=1)
 
+    # add new test cases
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("Test Cases for Comparison")
+    test_cases = {
+        "Colors Focus": "Roses are red, trucks are blue, and Seattle is grey right now",
+        "Flowers Focus": "I love tulips, roses, and daisies in my garden",
+        "Weather Focus": "It's raining in Seattle, cloudy in Portland, and sunny in LA",
+        "Cars Focus": "Tesla, Ford, and Toyota are popular car brands",
+        "Food Focus": "Pizza, pasta, and sushi are my favorite foods",
+        "Word Order 1": "Chocolate Milk",
+        "Word Order 2": "Milk Chocolate",
+        "Ambiguous": "Apple released a new product today",
+        "Multi-Category": "I ate pizza while watching cars race in the rain",
+        "Complex": "The weather is perfect for driving my new car to the flower market"
+    }
+
+    selected_test = st.sidebar.selectbox(
+        "Select a test case:",
+        ["Custom Input"] + list(test_cases.keys())
+    )
+
+    # Set default text based on selection
+    if selected_test == "Custom Input":
+        default_text = "Roses are red, trucks are blue, and Seattle is grey right now"
+    else:
+        default_text = test_cases[selected_test]
+        st.sidebar.info(f"Testing: {selected_test}")
+
+    # batch test mode
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("Batch Test Mode")
+    batch_test = st.sidebar.checkbox("Enable Batch Testing (runs all test cases)")
+
 
     st.title("Search Based Retrieval Demo")
     st.subheader(
@@ -525,7 +575,7 @@ if __name__ == "__main__":
     text_search = st.text_input(
         label="Input your sentence",
         key="text_search",
-        value="Roses are red, trucks are blue, and Seattle is grey right now",
+        value=default_text,
     )
     # st.session_state.text_search = text_search
 
@@ -544,10 +594,98 @@ if __name__ == "__main__":
 
     # Load glove embeddings
     word_index_dict, embeddings = load_glove_embeddings_gdrive(model_type)
+    
+    # batch test execution
+    if batch_test and st.sidebar.button("🚀 Run All Tests"):
+        st.markdown("---")
+        st.header("Batch Test Results")
 
+        all_test_results = []
+        categories = st.session_state.categories.split(" ")
+
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+
+        for idx, (test_name, test_input) in enumerate(test_cases.items()):
+            status_text.text(f"Testing: {test_name}...")
+            progress_bar.progress((idx + 1) / len(test_cases))
+            
+            # Temporarily set text_search
+            original_text = st.session_state.text_search
+            #st.session_state.text_search = test_input
+            
+            test_result = {
+                "Test Case": test_name,
+                "Input": test_input
+            }
+
+            # Test each model
+            models_config = {
+                "GloVe": {"embedding_model": "glove", "word_index_dict": word_index_dict, 
+                         "embeddings": embeddings, "model_type": model_type},
+                "Transformer": {"embedding_model": "transformers", "model_name": "all-MiniLM-L6-v2"},
+                "OpenAI Small": {"embedding_model": "openai", "model_name": "text-embedding-3-small"},
+                "OpenAI Large": {"embedding_model": "openai", "model_name": "text-embedding-3-large"}
+            }
+
+            for model_name, metadata in models_config.items():
+                start = time.time()
+                scores = get_sorted_cosine_similarity(metadata, input_text=test_input)
+                elapsed = time.time() - start
+                
+                top_cat = categories[scores[0][0]]
+                top_score = scores[0][1]
+                
+                test_result[f"{model_name} Prediction"] = top_cat
+                test_result[f"{model_name} Score"] = f"{top_score:.4f}"
+                test_result[f"{model_name} Time (ms)"] = f"{elapsed*1000:.2f}"
+
+            all_test_results.append(test_result)
+            #st.session_state.text_search = original_text
+
+        status_text.text("✅ All tests completed!")
+        progress_bar.empty()
+
+        # Display results
+        st.markdown("### 📊 Complete Test Results")
+        batch_df = pd.DataFrame(all_test_results)
+        st.dataframe(batch_df, use_container_width=True)
+
+        # Download option
+        batch_csv = batch_df.to_csv(index=False)
+        st.download_button(
+            label="📥 Download Batch Results (CSV)",
+            data=batch_csv,
+            file_name=f"batch_test_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv",
+            mime="text/csv"
+        )
+
+        # Analysis summary
+        st.markdown("### 📈 Model Agreement Analysis")
+
+        # Check how often models agree
+        agreement_data = []
+        for result in all_test_results:
+            predictions = [
+                result["GloVe Prediction"],
+                result["Transformer Prediction"],
+                result["OpenAI Small Prediction"],
+                result["OpenAI Large Prediction"]
+            ]
+            agreement = len(set(predictions)) == 1  # All same
+            agreement_data.append({
+                "Test Case": result["Test Case"],
+                "All Agree": "✅ Yes" if agreement else "❌ No",
+                "Unique Predictions": ", ".join(set(predictions))
+            })
+
+        agreement_df = pd.DataFrame(agreement_data)
+        st.dataframe(agreement_df, use_container_width=True)
+        
+        st.markdown("---")
 
     # Find closest word to an input word
-    if st.session_state.text_search:
+    if st.session_state.text_search and not batch_test:
         results_dict = {}
         
         # Glove embeddings
