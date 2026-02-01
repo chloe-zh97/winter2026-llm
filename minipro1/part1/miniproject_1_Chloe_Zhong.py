@@ -25,7 +25,7 @@ from sentence_transformers import SentenceTransformer
 import matplotlib.pyplot as plt
 import math
 from openai import OpenAI  # Added for OpenAI embeddings
-
+import time
 
 ### Some predefined utility functions for you to load the text embeddings
 
@@ -510,8 +510,11 @@ if __name__ == "__main__":
         "Pass in space separated categories you want this search demo to be about."
     )
     # st.selectbox(label="Pick the categories you want this search demo to be about...",
-    # options=("Flowers Colors Cars Weather Food", "Chocolate Milk", "Anger Joy Sad Frustration Worry Happiness", "Positive Negative"),
-    # key="categories"
+    #     options=("Flowers Colors Cars Weather Food", "Chocolate Milk", "Anger Joy Sad Frustration Worry Happiness", "Positive Negative"),
+    #     key="categories"
+    # )
+    # st.text_input(
+    #     label="Categories", key="categories", value="Flowers Colors Cars Weather Food"
     # )
     st.text_input(
         label="Categories", key="categories", value="Flowers Colors Cars Weather Food"
@@ -545,7 +548,6 @@ if __name__ == "__main__":
     # Load glove embeddings
     word_index_dict, embeddings = load_glove_embeddings_gdrive(model_type)
 
-
     # Find closest word to an input word
     if st.session_state.text_search:
         results_dict = {}
@@ -559,8 +561,12 @@ if __name__ == "__main__":
             "model_type": model_type,
         }
         with st.spinner("Obtaining Cosine similarity for Glove..."):
+            start = time.time()
             sorted_cosine_sim_glove = get_sorted_cosine_similarity(embeddings_metadata)
             results_dict["glove_" + str(model_type)] = sorted_cosine_sim_glove
+            elapsed = time.time() - start
+            print(f"Model name: glove_{str(model_type)}, time: {elapsed*1000:.2f}")
+            #results_dict["glove_" + str(model_type)]["time"] = elapsed*1000
 
         # Sentence transformer embeddings
         print("Sentence Transformer Embedding")
@@ -569,8 +575,12 @@ if __name__ == "__main__":
             "model_name": "all-MiniLM-L6-v2"
         }
         with st.spinner("Obtaining Cosine similarity for 384d sentence transformer..."):
+            start = time.time()
             sorted_cosine_sim_transformer = get_sorted_cosine_similarity(embeddings_metadata)
             results_dict["sentence_transformer_384"] = sorted_cosine_sim_transformer
+            elapsed = time.time() - start
+            print(f"Model name: sentence_transformer_384, time: {elapsed*1000:.2f}")
+            #results_dict["sentence_transformer_384"]["time"] = elapsed*1000
 
         # OpenAI Small embeddings
         print("OpenAI Small Embedding")
@@ -579,8 +589,11 @@ if __name__ == "__main__":
             "model_name": "text-embedding-3-small"
         }
         with st.spinner("Obtaining Cosine similarity for OpenAI Small (1536d)..."):
+            start = time.time()
             sorted_cosine_sim_openai_small = get_sorted_cosine_similarity(embeddings_metadata)
             results_dict["openai_small_1536"] = sorted_cosine_sim_openai_small
+            elapsed = time.time() - start
+            print(f"Model name: openai_small_1536, time: {elapsed*1000:.2f}")
 
         # OpenAI Large embeddings
         print("OpenAI Large Embedding")
@@ -589,8 +602,12 @@ if __name__ == "__main__":
             "model_name": "text-embedding-3-large"
         }
         with st.spinner("Obtaining Cosine similarity for OpenAI Large (3072d)..."):
+            start = time.time()
             sorted_cosine_sim_openai_large = get_sorted_cosine_similarity(embeddings_metadata)
+            elapsed = time.time() - start
             results_dict["openai_large_3072"] = sorted_cosine_sim_openai_large
+            #results_dict["openai_large_3072"]["time"] = elapsed*1000
+            print(f"Model name: openai_large_3072, time: {elapsed*1000:.2f}")
 
         # Results and Plot Pie Chart for all models
         print("Categories are: ", st.session_state.categories)
@@ -628,6 +645,4 @@ if __name__ == "__main__":
         st.write(
             "Demo developed by [Your Name](https://www.linkedin.com/in/your_id/ - Optional)"
         )
-        
-
         
